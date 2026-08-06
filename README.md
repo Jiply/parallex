@@ -1,5 +1,7 @@
 # Parallex
 
+![Parallex abstract landscape](assets/parallex-hero.png)
+
 Parallex is an unofficial, open-source macOS menu-bar utility for people who
 use local Codex with more than one ChatGPT billing account. Hover over its
 menu-bar icon to see active local turns, their billing context, and one
