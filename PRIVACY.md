@@ -49,10 +49,9 @@ account instance is first opened, Parallex may create or update:
 Parallex never replaces an unrecognized or divergent profile item. Declared
 shared-state paths must be absent or already link to the canonical `~/.codex`
 item. A conflict stops launch without deleting it. Parallex removes a legacy
-profile-local `.codex-global-state` item only after proving it is byte-identical
-to, or already resolves to, the valid canonical file. It never rewrites the
-canonical file; Codex Desktop reads it directly because each Electron process
-receives the shared Codex home.
+profile-local `.codex-global-state` item after validating that it is a file or
+symbolic link. It never rewrites the canonical file; Codex Desktop reads it
+directly because each Electron process receives the shared Codex home.
 
 ## Network behavior
 

@@ -94,14 +94,14 @@ Only the generated runtime shim changes `CODEX_HOME` to the profile's private
 account home before Codex starts. The runtime therefore reads that account's
 file-backed credentials while continuing to use shared SQLite-backed history.
 Profiles also link selected non-auth state from `~/.codex`, including sessions,
-configuration, skills, rules, attachments, automations, and worktrees.
+configuration, skills, rules, attachments, automations, and worktrees. Parallex
+removes obsolete profile-local global-state files from older layouts because
+Codex Desktop reads the canonical shared state directly.
 
 Parallex never replaces an unrecognized or divergent profile item. Declared
 shared-state paths link the canonical item so there is only one source of truth;
-a conflicting local item stops launch unchanged. A legacy profile-local global
-state item is removed only when it is byte-identical to, or already resolves to,
-the valid canonical file. Account directories are owner-only, and `auth.json`
-must be a regular non-symbolic-link file.
+a conflicting local item stops launch unchanged. Account directories are
+owner-only, and `auth.json` must be a regular non-symbolic-link file.
 
 For a copy-pasteable setup workflow, paste
 [CODEX_SETUP_PROMPT.md](CODEX_SETUP_PROMPT.md) into your local Codex.
