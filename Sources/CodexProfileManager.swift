@@ -31,7 +31,7 @@ struct CodexProfile: Hashable {
 }
 
 private struct CodexDesktopInstallation {
-  let appExecutableURL: URL
+  let bundleURL: URL
   let codexExecutableURL: URL
 }
 
@@ -196,14 +196,25 @@ final class CodexProfileManager {
     environment["CODEX_ELECTRON_USER_DATA_PATH"] = profile.desktopDataURL.path
     environment["CODEX_CLI_PATH"] = cliWrapperURL.path
 
-    let process = Process()
-    process.executableURL = installation.appExecutableURL
-    process.arguments = ["--user-data-dir=\(profile.desktopDataURL.path)"]
-    process.environment = environment
-    process.standardInput = FileHandle.nullDevice
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    try process.run()
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.arguments = ["--user-data-dir=\(profile.desktopDataURL.path)"]
+    configuration.environment = environment
+    configuration.createsNewApplicationInstance = true
+    configuration.allowsRunningApplicationSubstitution = false
+
+    let launchSemaphore = DispatchSemaphore(value: 0)
+    var launchError: Error?
+    NSWorkspace.shared.openApplication(
+      at: installation.bundleURL,
+      configuration: configuration
+    ) { _, error in
+      launchError = error
+      launchSemaphore.signal()
+    }
+    launchSemaphore.wait()
+    if let launchError {
+      throw launchError
+    }
   }
 
   /// When a Desktop needs to launch, this function validates credentials and the installed runtime first.
@@ -238,7 +249,7 @@ final class CodexProfileManager {
     try validateCredential(at: profile.authURL)
     try createPrivateDirectory(at: profile.desktopDataURL)
 
-    try removeVerifiedLegacyGlobalStateCopies(in: profile.homeURL)
+    try removeLegacyGlobalState(in: profile.homeURL)
 
     for name in sharedNames {
       try ensureSharedLink(named: name, in: profile.homeURL)
@@ -382,59 +393,31 @@ final class CodexProfileManager {
     }
   }
 
-  /// When an old Parallex layout left global-state copies, this removes only byte-identical copies.
-  private func removeVerifiedLegacyGlobalStateCopies(in accountHomeURL: URL) throws {
-    for staleURL in try verifiedLegacyGlobalStateCopies(in: accountHomeURL) {
+  /// When an old Parallex layout left private global state, this removes the obsolete items.
+  private func removeLegacyGlobalState(in accountHomeURL: URL) throws {
+    try validateLegacyGlobalState(in: accountHomeURL)
+    let staleURLs = obsoletePrivateStateNames
+      .map { accountHomeURL.appendingPathComponent($0) }
+      .filter(pathExistsIncludingSymbolicLink)
+    for staleURL in staleURLs {
       try fileManager.removeItem(at: staleURL)
     }
   }
 
-  /// When old global state exists, this validates that removing it cannot discard divergent bytes.
-  private func validateLegacyGlobalStateCopies(in accountHomeURL: URL) throws {
-    _ = try verifiedLegacyGlobalStateCopies(in: accountHomeURL)
-  }
-
-  /// When old global state exists, this returns only copies proven identical to canonical state.
-  private func verifiedLegacyGlobalStateCopies(in accountHomeURL: URL) throws -> [URL] {
-    let canonicalURL = sharedHomeURL.appendingPathComponent(".codex-global-state.json")
+  /// When legacy state may be removed, this accepts only files and symbolic links.
+  private func validateLegacyGlobalState(in accountHomeURL: URL) throws {
     let staleURLs = obsoletePrivateStateNames
       .map { accountHomeURL.appendingPathComponent($0) }
       .filter(pathExistsIncludingSymbolicLink)
-    guard !staleURLs.isEmpty else { return [] }
-
-    guard
-      let canonicalValues = try? canonicalURL.resourceValues(
-        forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-      ),
-      canonicalValues.isRegularFile == true,
-      canonicalValues.isSymbolicLink != true,
-      let canonicalData = fileManager.contents(atPath: canonicalURL.path),
-      !canonicalData.isEmpty,
-      (try? JSONSerialization.jsonObject(with: canonicalData)) is [String: Any]
-    else {
-      throw CodexProfileError.conflictingPath(canonicalURL.path)
-    }
 
     for staleURL in staleURLs {
-      if let destination = try? fileManager.destinationOfSymbolicLink(atPath: staleURL.path) {
-        let destinationURL = URL(
-          fileURLWithPath: destination,
-          relativeTo: staleURL.deletingLastPathComponent()
-        ).standardizedFileURL
-        guard
-          destinationURL.resolvingSymlinksInPath().path
-            == canonicalURL.standardizedFileURL.resolvingSymlinksInPath().path
-        else {
-          throw CodexProfileError.conflictingPath(staleURL.path)
-        }
-      } else {
-        guard fileManager.contents(atPath: staleURL.path) == canonicalData else {
-          throw CodexProfileError.conflictingPath(staleURL.path)
-        }
+      let values = try staleURL.resourceValues(
+        forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+      )
+      guard values.isRegularFile == true || values.isSymbolicLink == true else {
+        throw CodexProfileError.conflictingPath(staleURL.path)
       }
     }
-
-    return staleURLs
   }
 
   /// When the Desktop spawns Codex, this function pins that process to the profile credential.
@@ -549,7 +532,7 @@ final class CodexProfileManager {
       throw CodexProfileError.bundledCodexUnavailable
     }
     try validateGeneratedWrapper(at: profile.rootURL.appendingPathComponent(".parallex-codex"))
-    try validateLegacyGlobalStateCopies(in: profile.homeURL)
+    try validateLegacyGlobalState(in: profile.homeURL)
   }
 
   /// When an older Parallex boundary is detected, this function closes it before migration.
@@ -631,7 +614,7 @@ final class CodexProfileManager {
         continue
       }
       return CodexDesktopInstallation(
-        appExecutableURL: appExecutableURL,
+        bundleURL: bundleURL,
         codexExecutableURL: resourcesURL.appendingPathComponent("codex")
       )
     }

@@ -180,7 +180,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   }
 
   /// When the pointer enters the status item, this function opens the native menu.
-  @objc func mouseEntered(with event: NSEvent) {
+  @objc(mouseEntered:) func mouseEntered(_ event: NSEvent) {
     guard !menuOpen, !hoverOpenPending, !suppressHoverOpenUntilExit else { return }
 
     hoverOpenPending = true
@@ -197,7 +197,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   }
 
   /// When the pointer leaves the status item, this function permits the next deliberate hover-open.
-  @objc func mouseExited(with event: NSEvent) {
+  @objc(mouseExited:) func mouseExited(_ event: NSEvent) {
     hoverOpenPending = false
     suppressHoverOpenUntilExit = false
   }
