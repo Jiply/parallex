@@ -49,12 +49,14 @@ Parallex builds to `dist/Parallex.app` and opens as a Dock-free menu-bar app.
 Hover over its icon to reveal the menu. To keep the locally built app, drag
 `dist/Parallex.app` into `/Applications`.
 
-Choose **Open one Codex desktop instance per billing account**. Parallex focuses
-or starts every configured account instance without creating a chat. Each
-Desktop keeps the same credentials for its entire lifetime, so Account A and
-Account B can run concurrently without changing credentials underneath active
-work. Active turns appear beneath the billing account currently paying for
-their inference.
+Choose **Add billing account…**, enter its email address, and complete the
+OpenAI sign-in that opens in your browser. Repeat for each additional billing
+account, then choose **Open one Codex desktop instance per billing account**.
+Parallex focuses or starts every configured account instance without creating a
+chat. Each Desktop keeps the same credentials for its entire lifetime, so
+Account A and Account B can run concurrently without changing credentials
+underneath active work. Active turns appear beneath the billing account
+currently paying for their inference.
 
 Useful commands:
 
@@ -103,7 +105,9 @@ shared-state paths link the canonical item so there is only one source of truth;
 a conflicting local item stops launch unchanged. Account directories are
 owner-only, and `auth.json` must be a regular non-symbolic-link file.
 
-For a copy-pasteable setup workflow, paste
+Do not log out of the default Codex instance to add another account: that
+changes the credentials in `~/.codex`. Parallex instead runs login with the
+new profile's private account home. For a manual recovery workflow, paste
 [CODEX_SETUP_PROMPT.md](CODEX_SETUP_PROMPT.md) into your local Codex.
 
 Codex documents `CODEX_HOME` and `CODEX_SQLITE_HOME`, but running multiple

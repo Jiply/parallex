@@ -26,10 +26,9 @@ On each refresh, Parallex may access:
 macOS returns the complete process argument/environment buffer, and rollout
 reads occur in bounded byte buffers. Those transient buffers can contain fields
 Parallex does not use. During ordinary refreshes, the app decodes only the
-fields listed above. During legacy profile migration, it reads canonical and
-profile-local global-state bytes only to validate the canonical JSON container
-and prove full byte equality; it does not inspect individual state fields. It
-does not display or log other fields and discards transient buffers after use.
+fields listed above. Legacy global-state cleanup reads filesystem metadata only
+to confirm that each obsolete item is a regular file or symbolic link. It does
+not display or log other fields and discards transient buffers after use.
 
 ## Data stored
 
@@ -39,29 +38,35 @@ account emails, thread titles, workspace names, process details, or scan
 history.
 
 Saved profiles are user-managed directories under `~/.codex-accounts`. When an
-account instance is first opened, Parallex may create or update:
+account is added or its instance is first opened, Parallex may create or update:
 
 - an owner-only `desktop` directory for that account's Desktop browser state;
+- a private account home where the installed Codex login process writes its
+  file-backed credentials;
 - safe links from its account home to recognized non-auth state in `~/.codex`;
 - an owner-only `.parallex-codex` runtime shim containing local paths and
   configuration flags, but no credential data.
 
 Parallex never replaces an unrecognized or divergent profile item. Declared
 shared-state paths must be absent or already link to the canonical `~/.codex`
-item. A conflict stops launch without deleting it. Parallex removes a legacy
-profile-local `.codex-global-state` item after validating that it is a file or
-symbolic link. It never rewrites the canonical file; Codex Desktop reads it
-directly because each Electron process receives the shared Codex home.
+item. A conflict stops launch without deleting it. Parallex removes obsolete
+profile-local `.codex-global-state.json`, `.codex-global-state.json.bak`, and
+`.codex-global-state.before-parallex-sharing.json` items after validating that
+each one is a regular file or symbolic link. It never rewrites the canonical
+file; Codex Desktop reads it directly because each Electron process receives
+the shared Codex home.
 
 ## Network behavior
 
 Parallex contains no analytics, telemetry, update checker, or network client.
 For account information it starts the installed Codex executable as a local
 stdio app-server, disables plugins and apps for that probe, and sends
-`account/read` with token refresh disabled. When the bulk-open action is
-selected, Parallex may start one installed Codex Desktop process per configured
-billing account. Codex then performs its own normal authentication and network
-activity independently of Parallex.
+`account/read` with token refresh disabled. When **Add billing account…** is
+selected, Parallex starts the installed Codex login process with that account's
+private home; Codex opens and owns the browser authentication flow. When the
+bulk-open action is selected, Parallex may start one installed Codex Desktop
+process per configured billing account. Codex performs its own authentication
+and network activity independently of Parallex.
 
 ## Credentials
 
@@ -76,6 +81,7 @@ instances do not collapse into one shared Keychain credential. Treat every
 
 ## User control
 
+- Select **Add billing account…** to create and authenticate a private profile.
 - Select **Hide email** to replace visible account emails with **Email hidden**.
 - Close an account's Codex Desktop window or process to stop that instance.
 - Remove `~/.codex-accounts/<email>` to delete one local account profile after

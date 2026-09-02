@@ -52,6 +52,22 @@ final class CodexScanner {
   private let accountCacheLock = NSLock()
   private var accountCache: [String: CachedAccount] = [:]
 
+  /// When a new profile has authenticated, this function returns its locally reported account email.
+  func accountEmail(
+    codexHomeURL: URL,
+    executableURL: URL,
+    sqliteHomeURL: URL
+  ) -> String? {
+    readAccount(
+      from: ProcessContext(
+        processID: 0,
+        executablePath: executableURL.path,
+        codexHome: codexHomeURL.path,
+        sqliteHome: sqliteHomeURL.path,
+        usesManagedFileCredentials: true
+      ))?.email
+  }
+
   /// When Parallex refreshes, this function joins live Codex processes, rollout lifecycles, and billing accounts.
   func scan() throws -> CodexSnapshot {
     let profiles = CodexProfileManager().profiles()

@@ -1,5 +1,9 @@
 # Set up this Mac for Parallex account instances
 
+This is a manual recovery workflow. Prefer Parallex's **Add billing account…**
+menu action for normal setup. Never log out of the default Codex Desktop
+instance to add an account because that changes `~/.codex/auth.json`.
+
 Implement the setup below on this Mac; do not only explain it. All Parallex
 state and credential movement must remain local. Preserve all existing Codex
 data and never print, decode, paste into chat, or commit any credential or
