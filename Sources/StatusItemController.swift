@@ -161,6 +161,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     qos: .userInitiated
   )
   private let hideEmailAddressesKey = "hideEmailAddresses"
+  private var accountLoginInProgress = false
   private var menuOpen = false
   private var hoverOpenPending = false
   private var suppressHoverOpenUntilExit = false
@@ -328,6 +329,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     openAllItem.isEnabled = !launchableProfiles.isEmpty
     menu.addItem(openAllItem)
 
+    let addAccountTitle =
+      accountLoginInProgress
+      ? "Adding billing account…"
+      : "Add billing account…"
+    let addAccountItem = NSMenuItem(
+      title: addAccountTitle,
+      action: #selector(addBillingAccount),
+      keyEquivalent: ""
+    )
+    addAccountItem.target = self
+    let addAccountImage = NSImage(
+      systemSymbolName: "person.crop.circle.badge.plus",
+      accessibilityDescription: nil
+    )
+    addAccountImage?.isTemplate = true
+    addAccountImage?.size = menuImageSize
+    addAccountItem.image = addAccountImage
+    addAccountItem.isEnabled = !accountLoginInProgress
+    menu.addItem(addAccountItem)
+
     menu.addItem(.separator())
     let sectionItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     sectionItem.view = MenuFlexRowView(
@@ -484,6 +505,51 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
   }
 
+  /// When Add billing account is selected, this function starts isolated browser authentication.
+  @objc private func addBillingAccount() {
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    let emailField = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+    emailField.placeholderString = "name@example.com"
+
+    let alert = NSAlert()
+    alert.messageText = "Add billing account"
+    alert.informativeText =
+      "Parallex will open OpenAI sign-in in your browser and keep "
+      + "this account’s credentials in a private profile."
+    alert.accessoryView = emailField
+    alert.addButton(withTitle: "Continue")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = emailField
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+    let email = emailField.stringValue
+    accountLoginInProgress = true
+    rebuildMenu(with: monitor.snapshot)
+
+    profileActionQueue.async { [weak self] in
+      guard let self else { return }
+      let result = Result {
+        try CodexProfileManager().addProfile(email: email)
+      }
+
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        self.accountLoginInProgress = false
+        self.monitor.refresh()
+        switch result {
+        case .success(let profile):
+          self.showMessage(
+            title: "Billing account added",
+            text:
+              "\(profile.email) is ready. Use Open one Codex desktop instance per billing account."
+          )
+        case .failure(let error):
+          self.showError(error, title: "Couldn’t add billing account")
+        }
+      }
+    }
+  }
+
   /// When the bulk action is selected, this function starts one pinned Desktop per saved account.
   @objc private func openAllInstances() {
     let profiles = CodexProfileManager().profiles().filter(\.hasCredentials)
@@ -520,6 +586,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     alert.alertStyle = .critical
     alert.messageText = title
     alert.informativeText = error.localizedDescription
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  /// When an account is ready, this function confirms the result in a native dialog.
+  private func showMessage(title: String, text: String) {
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = text
     alert.addButton(withTitle: "OK")
     alert.runModal()
   }

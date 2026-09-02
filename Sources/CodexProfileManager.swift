@@ -42,21 +42,36 @@ private enum InstanceBoundaryStatus {
 }
 
 private enum CodexProfileError: LocalizedError {
+  case invalidEmail
+  case profileAlreadyConfigured(String)
   case invalidCredentialFile(String)
   case missingSharedHome(String)
   case conflictingPath(String)
+  case loginFailed
+  case accountVerificationFailed
+  case accountMismatch(expected: String, actual: String)
   case instanceRestartFailed
   case desktopAppUnavailable
   case bundledCodexUnavailable
 
   var errorDescription: String? {
     switch self {
+    case .invalidEmail:
+      return "Enter a valid billing-account email address."
+    case .profileAlreadyConfigured(let email):
+      return "A billing profile already exists for \(email)."
     case .invalidCredentialFile(let path):
       return "No safe file-backed Codex credentials were found at \(path)."
     case .missingSharedHome(let path):
       return "The shared Codex home is missing at \(path). Open Codex once, then try again."
     case .conflictingPath(let path):
       return "Parallex found an incompatible item at \(path) and left it unchanged."
+    case .loginFailed:
+      return "Codex sign-in did not complete. No existing credentials were changed."
+    case .accountVerificationFailed:
+      return "Parallex could not verify the signed-in Codex account."
+    case .accountMismatch(let expected, let actual):
+      return "Codex signed in as \(actual), not \(expected). No account was added."
     case .instanceRestartFailed:
       return "The existing Codex instance could not be restarted safely. Quit it and try again."
     case .desktopAppUnavailable:
@@ -159,6 +174,108 @@ final class CodexProfileManager {
       )
     }
     .sorted { $0.email.localizedCaseInsensitiveCompare($1.email) == .orderedAscending }
+  }
+
+  /// When a billing account is added, this function authenticates it inside a new private profile.
+  func addProfile(email rawEmail: String) throws -> CodexProfile {
+    let email = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard validEmail(email) else {
+      throw CodexProfileError.invalidEmail
+    }
+
+    let profileRootURL = accountsHomeURL.appendingPathComponent(email, isDirectory: true)
+    let profile = CodexProfile(
+      email: email,
+      rootURL: profileRootURL,
+      homeURL: profileRootURL.appendingPathComponent("home", isDirectory: true),
+      desktopDataURL: profileRootURL.appendingPathComponent("desktop", isDirectory: true)
+    )
+    if pathExistsIncludingSymbolicLink(profile.authURL) {
+      guard !profile.hasCredentials else {
+        throw CodexProfileError.profileAlreadyConfigured(email)
+      }
+      throw CodexProfileError.conflictingPath(profile.authURL.path)
+    }
+
+    guard let installation = desktopInstallation() else {
+      throw CodexProfileError.desktopAppUnavailable
+    }
+    guard fileManager.isExecutableFile(atPath: installation.codexExecutableURL.path) else {
+      throw CodexProfileError.bundledCodexUnavailable
+    }
+    guard
+      let sharedValues = try? sharedHomeURL.resourceValues(
+        forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+      ),
+      sharedValues.isDirectory == true,
+      sharedValues.isSymbolicLink != true
+    else {
+      throw CodexProfileError.missingSharedHome(sharedHomeURL.path)
+    }
+
+    try createPrivateDirectory(at: accountsHomeURL)
+    try createPrivateDirectory(at: profile.rootURL)
+    try createPrivateDirectory(at: profile.homeURL)
+    try createPrivateDirectory(at: profile.desktopDataURL)
+    for name in sharedNames {
+      try ensureSharedLink(named: name, in: profile.homeURL)
+    }
+    let sharedEntries = try fileManager.contentsOfDirectory(
+      at: sharedHomeURL,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    )
+    for entry in sharedEntries where entry.lastPathComponent.hasSuffix(".config.toml") {
+      try ensureSharedLink(named: entry.lastPathComponent, in: profile.homeURL)
+    }
+
+    let loginProcess = Process()
+    loginProcess.executableURL = installation.codexExecutableURL
+    loginProcess.arguments = [
+      "-c",
+      "cli_auth_credentials_store=file",
+      "-c",
+      "forced_login_method=chatgpt",
+      "login",
+    ]
+    var environment = ProcessInfo.processInfo.environment
+    environment["CODEX_HOME"] = profile.homeURL.path
+    environment.removeValue(forKey: "CODEX_SQLITE_HOME")
+    environment.removeValue(forKey: "CODEX_CLI_PATH")
+    environment.removeValue(forKey: "CODEX_ELECTRON_USER_DATA_PATH")
+    loginProcess.environment = environment
+    loginProcess.standardOutput = FileHandle.nullDevice
+    loginProcess.standardError = FileHandle.nullDevice
+    try loginProcess.run()
+    loginProcess.waitUntilExit()
+    guard loginProcess.terminationStatus == 0 else {
+      try? fileManager.removeItem(at: profile.authURL)
+      throw CodexProfileError.loginFailed
+    }
+
+    do {
+      try validateCredential(at: profile.authURL)
+    } catch {
+      try? fileManager.removeItem(at: profile.authURL)
+      throw error
+    }
+    guard
+      let actualEmail = CodexScanner().accountEmail(
+        codexHomeURL: profile.homeURL,
+        executableURL: installation.codexExecutableURL,
+        sqliteHomeURL: sharedHomeURL
+      )
+    else {
+      try? fileManager.removeItem(at: profile.authURL)
+      throw CodexProfileError.accountVerificationFailed
+    }
+    guard actualEmail.lowercased() == email else {
+      try? fileManager.removeItem(at: profile.authURL)
+      throw CodexProfileError.accountMismatch(expected: email, actual: actualEmail)
+    }
+
+    try prepareInstance(profile, codexExecutableURL: installation.codexExecutableURL)
+    return profile
   }
 
   /// When bulk launch includes an account, this function activates its Desktop or starts one without a chat.
