@@ -329,6 +329,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     openAllItem.isEnabled = !launchableProfiles.isEmpty
     menu.addItem(openAllItem)
 
+    let closeAllItem = NSMenuItem(
+      title: "Close all Codex instances",
+      action: #selector(closeAllInstances),
+      keyEquivalent: ""
+    )
+    closeAllItem.target = self
+    let closeAllImage = NSImage(
+      systemSymbolName: "rectangle.on.rectangle.slash",
+      accessibilityDescription: nil
+    )
+    closeAllImage?.isTemplate = true
+    closeAllImage?.size = menuImageSize
+    closeAllItem.image = closeAllImage
+    closeAllItem.isEnabled = launchableProfiles.contains(where: profileManager.isInstanceRunning)
+    menu.addItem(closeAllItem)
+
     let addAccountTitle =
       accountLoginInProgress
       ? "Adding billing account…"
@@ -574,6 +590,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self?.monitor.refresh()
         if let firstError {
           self?.showError(firstError, title: "Couldn’t open every Codex instance")
+        }
+      }
+    }
+  }
+
+  /// When the bulk close action is selected, this function closes every managed Desktop instance.
+  @objc private func closeAllInstances() {
+    profileActionQueue.async { [weak self] in
+      guard let self else { return }
+      let result = Result {
+        try CodexProfileManager().closeAllInstances()
+      }
+
+      DispatchQueue.main.async { [weak self] in
+        self?.monitor.refresh()
+        if case .failure(let error) = result {
+          self?.showError(error, title: "Couldn’t close every Codex instance")
         }
       }
     }

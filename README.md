@@ -18,11 +18,12 @@ OpenAI are trademarks of OpenAI.
   available.
 - Identifies API-key and Amazon Bedrock authentication when Codex reports it.
 - Warns when file-backed credentials changed after a turn began.
-- Opens or focuses one Codex Desktop instance for every saved billing account.
+- Opens, focuses, or closes Codex Desktop instances for saved billing accounts.
 
 Parallex never creates a Codex chat. The bulk-open action brings running
 account instances forward and opens stopped instances at their normal history
-view. Parallex itself has no Dock icon or windows.
+view. The bulk-close action gracefully terminates only account instances managed
+by Parallex. Parallex itself has no Dock icon or windows.
 
 The **Hide email** preference updates the open menu and persists between
 launches. Observed account and session data does not persist.
@@ -88,7 +89,9 @@ credential data.
 
 Each Electron Desktop receives the canonical `~/.codex` as its `CODEX_HOME` and
 `CODEX_SQLITE_HOME`, so every instance reads the same project/sidebar state and
-local history. Its browser and login state remains private under the profile's
+local history. Parallex also relays sidebar-changing thread notifications among
+open profile instances so a newly started task appears immediately everywhere.
+Each instance's browser and login state remains private under the profile's
 `desktop` directory; runtime caches, logs, and IPC remain private under the
 profile's account home.
 

@@ -15,6 +15,8 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+RELAY_NAME="ParallexCodexRelay"
+RELAY_BINARY="$APP_MACOS/$RELAY_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 PARALLEX_ARCH="$(uname -m)"
 ICON_GENERATOR="$BUILD_DIR/GenerateParallexIcon"
@@ -62,12 +64,21 @@ swiftc \
   -framework AppKit \
   -framework Combine
 
+swiftc \
+  -swift-version 5 \
+  -parse-as-library \
+  -target "$PARALLEX_ARCH-apple-macos14.0" \
+  -module-cache-path "$MODULE_CACHE_DIR" \
+  "$ROOT_DIR/Sources/CodexEventRelay.swift" \
+  -o "$BUILD_DIR/$RELAY_NAME"
+
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_DIR/$APP_NAME" "$APP_BINARY"
+cp "$BUILD_DIR/$RELAY_NAME" "$RELAY_BINARY"
 cp "$ROOT_DIR/Resources/$APP_NAME.icns" "$APP_RESOURCES/$APP_NAME.icns"
 cp "$ROOT_DIR/CODEX_SETUP_PROMPT.md" "$APP_RESOURCES/CODEX_SETUP_PROMPT.md"
-chmod +x "$APP_BINARY"
+chmod +x "$APP_BINARY" "$RELAY_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
