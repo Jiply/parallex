@@ -90,9 +90,9 @@ local app-server that the reported email exactly matches the profile directory.
 If it does not match, stop and report only the mismatch.
 
 Create `.parallex-codex` as a narrow runtime shim. It must export the profile's
-absolute account-home path as `CODEX_HOME`, then `exec` the `codex` runtime
-bundled inside the installed Codex Desktop app, preserve all received arguments
-with `"$@"`, and prepend:
+absolute account-home path as `CODEX_HOME`, then `exec` Parallex's bundled Codex
+event relay with the installed Codex Desktop runtime as its first argument,
+preserve all received arguments with `"$@"`, and prepend:
 
 ```text
 -c cli_auth_credentials_store=file

@@ -21,14 +21,19 @@ On each refresh, Parallex may access:
   `account/read` method;
 - the modification time of file-backed `auth.json`, when present;
 - credential file metadata such as type and size before an account instance is
-  opened.
+  opened;
+- local app-server `thread/started`, `thread/name/updated`, and
+  `thread/status/changed` notifications while profile instances are open.
 
 macOS returns the complete process argument/environment buffer, and rollout
 reads occur in bounded byte buffers. Those transient buffers can contain fields
 Parallex does not use. During ordinary refreshes, the app decodes only the
 fields listed above. Legacy global-state cleanup reads filesystem metadata only
 to confirm that each obsolete item is a regular file or symbolic link. It does
-not display or log other fields and discards transient buffers after use.
+not display or log other fields. The runtime relay passes all app-server traffic
+through unchanged and copies only the three listed thread notifications to other
+local profile instances. It does not persist or transmit them over a network,
+and it discards transient buffers after use.
 
 ## Data stored
 
@@ -83,6 +88,8 @@ instances do not collapse into one shared Keychain credential. Treat every
 
 - Select **Add billing account…** to create and authenticate a private profile.
 - Select **Hide email** to replace visible account emails with **Email hidden**.
+- Select **Close all Codex instances** to terminate every account instance
+  managed by Parallex without affecting an unmanaged Codex instance.
 - Close an account's Codex Desktop window or process to stop that instance.
 - Remove `~/.codex-accounts/<email>` to delete one local account profile after
   closing its Desktop. Shared state linked from `~/.codex` is not deleted.
