@@ -21,7 +21,8 @@ enum CodexEventRelay {
     do {
       exit(try run(executable: executable, arguments: Array(arguments.dropFirst())))
     } catch {
-      FileHandle.standardError.write(Data("Codex relay failed: \(error.localizedDescription)\n".utf8))
+      FileHandle.standardError.write(
+        Data("Codex relay failed: \(error.localizedDescription)\n".utf8))
       exit(1)
     }
   }
@@ -34,6 +35,7 @@ enum CodexEventRelay {
     let outputQueue = DispatchQueue(label: "org.curvelabs.Parallex.codex-relay-output")
     let sourceID = UUID().uuidString
     var parseBuffer = Data()
+    var scanOffset = parseBuffer.startIndex
 
     process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = arguments
@@ -83,9 +85,11 @@ enum CodexEventRelay {
       }
       parseBuffer.append(data)
 
-      while let newline = parseBuffer.firstIndex(of: 0x0A) {
+      // Resume at the first unread byte when a response arrives across multiple chunks.
+      while let newline = parseBuffer[scanOffset...].firstIndex(of: 0x0A) {
         let line = Data(parseBuffer[...newline])
         parseBuffer.removeSubrange(...newline)
+        scanOffset = parseBuffer.startIndex
         guard relayableMethod(in: line) != nil else { continue }
         notificationCenter.postNotificationName(
           relayNotification,
@@ -97,6 +101,7 @@ enum CodexEventRelay {
           deliverImmediately: true
         )
       }
+      scanOffset = parseBuffer.endIndex
     }
 
     try process.run()
