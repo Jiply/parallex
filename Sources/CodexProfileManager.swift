@@ -94,7 +94,6 @@ final class CodexProfileManager {
   private let accountsHomeURL: URL
   private let maximumCredentialBytes = 10 * 1024 * 1024
   private let sharedNames = [
-    ".tmp",
     "AGENTS.md",
     "AGENTS.override.md",
     "archived_sessions",
@@ -102,7 +101,6 @@ final class CodexProfileManager {
     "automations",
     "browser",
     "computer-use",
-    "config.toml",
     "generated_images",
     "history.jsonl",
     "node_repl",
@@ -120,11 +118,7 @@ final class CodexProfileManager {
     "visualizations",
     "worktrees",
   ]
-  private let obsoletePrivateStateNames = [
-    ".codex-global-state.json",
-    ".codex-global-state.json.bak",
-    ".codex-global-state.before-parallex-sharing.json",
-  ]
+  private let privateStateNames = [".tmp", "config.toml", ".codex-global-state.json"]
 
   init(
     fileManager: FileManager = .default,
@@ -133,9 +127,11 @@ final class CodexProfileManager {
   ) {
     self.fileManager = fileManager
     let userHome = fileManager.homeDirectoryForCurrentUser
-    self.sharedHomeURL = sharedHomeURL
+    self.sharedHomeURL =
+      sharedHomeURL
       ?? userHome.appendingPathComponent(".codex", isDirectory: true)
-    self.accountsHomeURL = accountsHomeURL
+    self.accountsHomeURL =
+      accountsHomeURL
       ?? userHome.appendingPathComponent(".codex-accounts", isDirectory: true)
   }
 
@@ -223,6 +219,7 @@ final class CodexProfileManager {
     try createPrivateDirectory(at: profile.rootURL)
     try createPrivateDirectory(at: profile.homeURL)
     try createPrivateDirectory(at: profile.desktopDataURL)
+    try preparePrivateState(in: profile.homeURL)
     for name in sharedNames {
       try ensureSharedLink(named: name, in: profile.homeURL)
     }
@@ -293,7 +290,8 @@ final class CodexProfileManager {
         return
       case .mismatched:
         let installation = try validatedInstallation(for: profile)
-        try validateInstancePreparation(profile, codexExecutableURL: installation.codexExecutableURL)
+        try validateInstancePreparation(
+          profile, codexExecutableURL: installation.codexExecutableURL)
         try terminateStaleInstance(application)
         try launchInstance(profile, installation: installation)
         return
@@ -337,7 +335,7 @@ final class CodexProfileManager {
     let cliWrapperURL = profile.rootURL.appendingPathComponent(".parallex-codex")
 
     var environment = ProcessInfo.processInfo.environment
-    environment["CODEX_HOME"] = sharedHomeURL.path
+    environment["CODEX_HOME"] = profile.homeURL.path
     environment["CODEX_SQLITE_HOME"] = sharedHomeURL.path
     environment["CODEX_ELECTRON_USER_DATA_PATH"] = profile.desktopDataURL.path
     environment["CODEX_CLI_PATH"] = cliWrapperURL.path
@@ -396,8 +394,9 @@ final class CodexProfileManager {
     try validateCredential(at: profile.authURL)
     try createPrivateDirectory(at: profile.desktopDataURL)
 
-    try removeLegacyGlobalState(in: profile.homeURL)
+    try preparePrivateState(in: profile.homeURL)
 
+    try prepareBrowserPlugins(codexExecutableURL: codexExecutableURL)
     for name in sharedNames {
       try ensureSharedLink(named: name, in: profile.homeURL)
     }
@@ -412,6 +411,49 @@ final class CodexProfileManager {
     }
 
     try installCLIWrapper(for: profile, codexExecutableURL: codexExecutableURL)
+  }
+
+  /// When an instance opens, this restores missing browser bundles from the matching installed app.
+  private func prepareBrowserPlugins(codexExecutableURL: URL) throws {
+    let bundled = codexExecutableURL.deletingLastPathComponent()
+      .appendingPathComponent("plugins/openai-bundled/plugins")
+    for name in ["browser", "chrome"] {
+      let source = bundled.appendingPathComponent(name)
+      guard fileManager.fileExists(atPath: source.path) else { continue }
+      let manifest = try Data(
+        contentsOf: source.appendingPathComponent(".codex-plugin/plugin.json"))
+      guard let plugin = try JSONSerialization.jsonObject(with: manifest) as? [String: Any],
+        let version = plugin["version"] as? String,
+        !version.isEmpty, version != ".", version != "..", !version.contains("/")
+      else { throw CodexProfileError.conflictingPath(source.path) }
+      let parent = sharedHomeURL.appendingPathComponent("plugins/cache/openai-bundled/\(name)")
+      let target = parent.appendingPathComponent(version)
+      let required =
+        name == "browser"
+        ? [
+          "scripts/browser-client.mjs", "scripts/browser-service.mjs", ".codex-plugin/plugin.json",
+        ]
+        : ["scripts/browser-client.mjs", ".codex-plugin/plugin.json"]
+      if required.allSatisfy({
+        fileManager.fileExists(atPath: target.appendingPathComponent($0).path)
+      }) {
+        continue
+      }
+      try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+      let staged = parent.appendingPathComponent(".parallex-restore-" + UUID().uuidString)
+      try fileManager.copyItem(at: source, to: staged)
+      do {
+        if pathExistsIncludingSymbolicLink(target) {
+          try fileManager.moveItem(
+            at: target,
+            to: parent.appendingPathComponent(".parallex-backup-" + UUID().uuidString))
+        }
+        try fileManager.moveItem(at: staged, to: target)
+      } catch {
+        try? fileManager.removeItem(at: staged)
+        throw error
+      }
+    }
   }
 
   /// When a directory name represents an account, this function accepts safe common email syntax.
@@ -525,7 +567,8 @@ final class CodexProfileManager {
 
     let targetURL = accountHomeURL.appendingPathComponent(name)
     guard pathExistsIncludingSymbolicLink(targetURL) else { return }
-    guard let destination = try? fileManager.destinationOfSymbolicLink(atPath: targetURL.path) else {
+    guard let destination = try? fileManager.destinationOfSymbolicLink(atPath: targetURL.path)
+    else {
       throw CodexProfileError.conflictingPath(targetURL.path)
     }
     let destinationURL = URL(
@@ -540,34 +583,53 @@ final class CodexProfileManager {
     }
   }
 
-  /// When an old Parallex layout left private global state, this removes the obsolete items.
-  private func removeLegacyGlobalState(in accountHomeURL: URL) throws {
-    try validateLegacyGlobalState(in: accountHomeURL)
-    let staleURLs = obsoletePrivateStateNames
-      .map { accountHomeURL.appendingPathComponent($0) }
-      .filter(pathExistsIncludingSymbolicLink)
-    for staleURL in staleURLs {
-      try fileManager.removeItem(at: staleURL)
-    }
-  }
-
-  /// When legacy state may be removed, this accepts only files and symbolic links.
-  private func validateLegacyGlobalState(in accountHomeURL: URL) throws {
-    let staleURLs = obsoletePrivateStateNames
-      .map { accountHomeURL.appendingPathComponent($0) }
-      .filter(pathExistsIncludingSymbolicLink)
-
-    for staleURL in staleURLs {
-      let values = try staleURL.resourceValues(
-        forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-      )
-      guard values.isRegularFile == true || values.isSymbolicLink == true else {
-        throw CodexProfileError.conflictingPath(staleURL.path)
+  /// When a profile starts, this function gives its Desktop and backend private writable state.
+  private func preparePrivateState(in accountHomeURL: URL) throws {
+    try validatePrivateState(in: accountHomeURL)
+    for name in privateStateNames {
+      let target = accountHomeURL.appendingPathComponent(name)
+      let source = sharedHomeURL.appendingPathComponent(name)
+      let values = try? target.resourceValues(forKeys: [.isSymbolicLinkKey])
+      if values?.isSymbolicLink == true {
+        // Remove only the validated link; its shared target and data remain untouched.
+        try fileManager.removeItem(at: target)
+      } else if pathExistsIncludingSymbolicLink(target) {
+        continue
+      }
+      if name == ".tmp" {
+        try createPrivateDirectory(at: target)
+      } else if fileManager.fileExists(atPath: source.path) {
+        var data = try Data(contentsOf: source)
+        if name == "config.toml", let text = String(data: data, encoding: .utf8) {
+          data = Data(
+            text.replacingOccurrences(
+              of: sharedHomeURL.appendingPathComponent(".tmp").path,
+              with: accountHomeURL.appendingPathComponent(".tmp").path
+            ).utf8)
+        }
+        try data.write(to: target, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
       }
     }
   }
 
-  /// When the Desktop spawns Codex, this function pins that process to the profile credential.
+  /// When migrating shared state, this function accepts only known links or existing private state.
+  private func validatePrivateState(in accountHomeURL: URL) throws {
+    for name in privateStateNames {
+      let target = accountHomeURL.appendingPathComponent(name)
+      guard pathExistsIncludingSymbolicLink(target) else { continue }
+      let values = try target.resourceValues(
+        forKeys: [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey]
+      )
+      if values.isSymbolicLink == true {
+        try validateSharedLinkTarget(named: name, in: accountHomeURL)
+      } else if name == ".tmp" ? values.isDirectory != true : values.isRegularFile != true {
+        throw CodexProfileError.conflictingPath(target.path)
+      }
+    }
+  }
+
+  /// When Desktop spawns Codex, this function shares its data home and isolates its in-memory billing account.
   private func installCLIWrapper(for profile: CodexProfile, codexExecutableURL: URL) throws {
     let wrapperURL = profile.rootURL.appendingPathComponent(".parallex-codex")
     let marker = "#!/bin/zsh\n# Generated by Parallex."
@@ -575,16 +637,19 @@ final class CodexProfileManager {
     try validateGeneratedWrapper(at: wrapperURL)
 
     let script = """
-    \(marker)
-    set -euo pipefail
-    export CODEX_HOME=\(shellQuote(profile.homeURL.path))
+      \(marker)
+      set -euo pipefail
+      export CODEX_HOME=\(shellQuote(sharedHomeURL.path))
 
-    exec \(shellQuote(relayURL.path)) \(shellQuote(codexExecutableURL.path)) \\
-      -c \(shellQuote("cli_auth_credentials_store=file")) \\
-      -c \(shellQuote("sqlite_home=\(sharedHomeURL.path)")) \\
-      -c \(shellQuote("forced_login_method=chatgpt")) \\
-      "$@"
-    """
+      exec \(shellQuote(relayURL.path)) \\
+        --auth-home \(shellQuote(profile.homeURL.path)) \\
+        --shared-home \(shellQuote(sharedHomeURL.path)) \\
+        \(shellQuote(codexExecutableURL.path)) \\
+        -c \(shellQuote("cli_auth_credentials_store=ephemeral")) \\
+        -c \(shellQuote("sqlite_home=\(sharedHomeURL.path)")) \\
+        -c \(shellQuote("forced_login_method=chatgpt")) \\
+        "$@"
+      """
     try Data(script.utf8).write(to: wrapperURL, options: .atomic)
     try fileManager.setAttributes(
       [.posixPermissions: NSNumber(value: Int16(0o700))],
@@ -600,7 +665,7 @@ final class CodexProfileManager {
     else {
       throw CodexProfileError.bundledRelayUnavailable
     }
-    return relayURL
+    return relayURL.resolvingSymlinksInPath()
   }
 
   /// When a generated shim already exists, this function rejects user-owned or oversized files.
@@ -643,7 +708,7 @@ final class CodexProfileManager {
     guard let data = processArguments(for: application.processIdentifier) else { return .unknown }
     let expectedWrapper = profile.rootURL.appendingPathComponent(".parallex-codex").path
     let matches =
-      processValue(prefixedBy: "CODEX_HOME=", in: data) == sharedHomeURL.path
+      processValue(prefixedBy: "CODEX_HOME=", in: data) == profile.homeURL.path
       && processValue(prefixedBy: "CODEX_SQLITE_HOME=", in: data) == sharedHomeURL.path
       && processValue(prefixedBy: "CODEX_ELECTRON_USER_DATA_PATH=", in: data)
         == profile.desktopDataURL.path
@@ -691,7 +756,7 @@ final class CodexProfileManager {
       throw CodexProfileError.bundledCodexUnavailable
     }
     try validateGeneratedWrapper(at: profile.rootURL.appendingPathComponent(".parallex-codex"))
-    try validateLegacyGlobalState(in: profile.homeURL)
+    try validatePrivateState(in: profile.homeURL)
   }
 
   /// When an older Parallex boundary is detected, this function closes it before migration.

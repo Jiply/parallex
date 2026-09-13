@@ -81,8 +81,11 @@ final class CodexScanner {
     for metadata in metadataByPath.values {
       metadataByID[metadata.id] = metadata
     }
-    let activeCandidates = candidates.compactMap { candidate -> (SessionCandidate, LifecycleSignal)? in
-      guard let signal = latestLifecycleSignal(at: candidate.path), signal.isActive else { return nil }
+    let activeCandidates = candidates.compactMap {
+      candidate -> (SessionCandidate, LifecycleSignal)? in
+      guard let signal = latestLifecycleSignal(at: candidate.path), signal.isActive else {
+        return nil
+      }
       guard processIsRunning(candidate.processID) else { return nil }
       return (candidate, signal)
     }
@@ -144,12 +147,14 @@ final class CodexScanner {
         accountsLock.unlock()
       }
     }
-    accounts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    accounts.sort {
+      $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+    }
 
     let accountIDsByHome = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0.id) })
     let titlesByHome = Dictionary(
       uniqueKeysWithValues: contextByHome.keys.map { home in
-        (home, threadTitles(in: home))
+        (home, threadTitles(in: contextByHome[home]?.sqliteHome ?? home))
       }
     )
 
@@ -190,7 +195,8 @@ final class CodexScanner {
 
       let metadata = metadataByID[sessionID] ?? observedMetadata
       let workspace = metadata?.workspace ?? "Unknown workspace"
-      let title = titlesByHome[context.codexHome]?[sessionID]
+      let title =
+        titlesByHome[context.codexHome]?[sessionID]
         ?? fallbackTitle(workspace: workspace, originator: metadata?.originator)
       let accountID = accountIDsByHome[context.codexHome] ?? context.codexHome
 
@@ -359,7 +365,8 @@ final class CodexScanner {
     let id = payload["id"] as? String ?? threadID(from: path)
     let cwd = payload["cwd"] as? String
     let workspace = cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Unknown workspace"
-    let originator = payload["originator"] as? String
+    let originator =
+      payload["originator"] as? String
       ?? payload["source"] as? String
       ?? "Codex"
     let source = payload["source"] as? [String: Any]
@@ -420,8 +427,19 @@ final class CodexScanner {
   private func processContext(for processID: Int32, managedHomes: Set<String>) -> ProcessContext {
     let data = processArguments(for: processID)
     let executablePath = data.flatMap(executablePath(from:))
-    let codexHome = data.flatMap { environmentValue(named: "CODEX_HOME", in: $0) }
+    let runtimeHome =
+      data.flatMap { environmentValue(named: "CODEX_HOME", in: $0) }
       ?? defaultCodexHome()
+    let wrapperPath = data.flatMap { environmentValue(named: "CODEX_CLI_PATH", in: $0) }
+    let profileHome = wrapperPath.map {
+      URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("home").path
+    }
+    let usesMemoryCredentials =
+      data?.split(separator: 0).contains {
+        $0.elementsEqual(Data("cli_auth_credentials_store=ephemeral".utf8))
+      } ?? false
+    let managedHome = profileHome.flatMap { managedHomes.contains($0) ? $0 : nil }
+    let codexHome = usesMemoryCredentials ? managedHome ?? runtimeHome : runtimeHome
     let sqliteHome = data.flatMap { environmentValue(named: "CODEX_SQLITE_HOME", in: $0) }
 
     let standardizedHome = URL(fileURLWithPath: codexHome).standardized.path
@@ -486,10 +504,10 @@ final class CodexScanner {
 
   /// When an account is needed, this function uses Codex's supported account API and a short-lived cache.
   private func account(for context: ProcessContext) -> BillingAccount {
-    let cacheKey = "\(context.codexHome)|\(context.executablePath ?? "")|\(context.usesManagedFileCredentials)"
+    let cacheKey =
+      "\(context.codexHome)|\(context.executablePath ?? "")|\(context.usesManagedFileCredentials)"
     accountCacheLock.lock()
-    if
-      let cached = accountCache[cacheKey],
+    if let cached = accountCache[cacheKey],
       Date().timeIntervalSince(cached.fetchedAt) < accountCacheLifetime
     {
       accountCacheLock.unlock()
@@ -497,12 +515,14 @@ final class CodexScanner {
     }
     accountCacheLock.unlock()
 
-    let account = readAccount(from: context) ?? BillingAccount(
-      id: context.codexHome,
-      email: nil,
-      planType: nil,
-      kind: "unavailable"
-    )
+    let account =
+      readAccount(from: context)
+      ?? BillingAccount(
+        id: context.codexHome,
+        email: nil,
+        planType: nil,
+        kind: "unavailable"
+      )
     accountCacheLock.lock()
     accountCache[cacheKey] = CachedAccount(account: account, fetchedAt: Date())
     accountCacheLock.unlock()
@@ -511,7 +531,9 @@ final class CodexScanner {
 
   /// When a Codex runtime context is available, this function performs an initialized account/read handshake.
   private func readAccount(from context: ProcessContext) -> BillingAccount? {
-    guard let executablePath = context.executablePath ?? defaultCodexExecutable() else { return nil }
+    guard let executablePath = context.executablePath ?? defaultCodexExecutable() else {
+      return nil
+    }
     guard fileManager.isExecutableFile(atPath: executablePath) else { return nil }
 
     let process = Process()
@@ -606,7 +628,7 @@ final class CodexScanner {
             "clientInfo": [
               "name": "parallex",
               "version": "0.1.0",
-            ],
+            ]
           ],
         ],
         to: input.fileHandleForWriting

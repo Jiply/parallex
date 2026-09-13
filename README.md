@@ -83,25 +83,44 @@ Parallex discovers saved profiles from this local layout:
                                          private runtime credential shim
 ```
 
-The shim pins the bundled Codex runtime to file-backed ChatGPT credentials in
-that profile. It does not open the Desktop or create a chat, and it contains no
-credential data.
+The shim starts the bundled Codex backend with the canonical shared data home
+and process-local authentication. A separate credential helper uses the
+profile's private `auth.json` for login and refresh. Tokens pass through local
+pipes into that instance's memory; the shared `auth.json` is never replaced.
+The shim contains no credential data.
 
-Each Electron Desktop receives the canonical `~/.codex` as its `CODEX_HOME` and
-`CODEX_SQLITE_HOME`, so every instance reads the same project/sidebar state and
-local history. Parallex also relays sidebar-changing thread notifications among
-open profile instances so a newly started task appears immediately everywhere.
-Each instance's browser and login state remains private under the profile's
-`desktop` directory; runtime caches, logs, and IPC remain private under the
-profile's account home.
+Browser authentication reads use the same profile's native credential helper.
+At backend startup and when a thread opens or resumes, the relay aligns browser
+runtime paths with the installed app and trusts the canonical shared plugin
+location. Each Desktop launch starts a fresh browser tool runtime. Launcher
+preflight restores missing browser bundles from that exact app version, keeping
+vendor files and backing up incomplete cache entries. It does not restart active
+apps or run a restart loop; browser connectivity still depends on Chrome, its
+extension, and the account's current authentication.
 
-Only the generated runtime shim changes `CODEX_HOME` to the profile's private
-account home before Codex starts. The runtime therefore reads that account's
-file-backed credentials while continuing to use shared SQLite-backed history.
-Profiles also link selected non-auth state from `~/.codex`, including sessions,
-configuration, skills, rules, attachments, automations, and worktrees. Parallex
-removes obsolete profile-local global-state files from older layouts because
-Codex Desktop reads the canonical shared state directly.
+Every managed backend uses `~/.codex` for both `CODEX_HOME` and
+`CODEX_SQLITE_HOME`. Session files, databases, configuration, attachments,
+plugins, and writer locks therefore have one source of truth, including new
+storage paths introduced by Codex updates. The Desktop process uses a private
+home for its IPC channel: native cross-window execution forwarding would
+otherwise bill the task owner's account instead of the sending window's account.
+
+Desktop bootstrap configuration, preferences, browser state, and temporary
+plugin installation files remain private. The backend uses the canonical
+configuration. Task title updates refresh other instances' catalogs. While
+Parallex runs, its local IPC bridge shares read/unread, archive, and unarchive
+metadata between saved profiles. Unread state is reconciled after reconnects and
+restarts using a private local journal, including reads made while Parallex is
+stopped. On first adoption, conflicting lists preserve unread notifications;
+subsequent explicit read/unread changes establish the shared state. It never
+forwards execution requests, approvals,
+or credentials across accounts. Remote hosts remain separate.
+
+When another account opens an idle task, the relay asks its backend to release
+the writer and waits for Codex to confirm closure before resuming it with the
+new account. Active tasks keep their current owner. Their saved history remains
+readable through Codex's local read API, but Codex Desktop does not expose a
+passive cross-account live view.
 
 Parallex never replaces an unrecognized or divergent profile item. Declared
 shared-state paths link the canonical item so there is only one source of truth;
@@ -113,20 +132,31 @@ changes the credentials in `~/.codex`. Parallex instead runs login with the
 new profile's private account home. For a manual recovery workflow, paste
 [CODEX_SETUP_PROMPT.md](CODEX_SETUP_PROMPT.md) into your local Codex.
 
-Codex documents `CODEX_HOME` and `CODEX_SQLITE_HOME`, but running multiple
-Desktop instances against shared thread files is not an officially documented
-multi-account feature. Keep Parallex and Codex current, avoid editing the same
-chat or reorganizing projects concurrently in two instances, and retain normal
-backups of local work.
+Codex does not expose a complete desktop synchronization API. Its in-memory
+preferences, project organization, and live views cannot all be synchronized
+through the supported protocol. Sharing its preferences JSON file would risk
+overwriting another window's changes. Parallex does not claim complete UI
+synchronization. Keep normal backups and avoid concurrent edits to one task.
+
+Run `python3 tests/read_state_bridge.py` to verify read-state synchronization
+against isolated IPC servers, including reconnects, process restarts, and missed
+read events. The sidebar CI workflow runs this test and builds the app. Run
+`python3 tests/profile_state.py` to verify
+profile migration and preservation of existing settings. Run
+`python3 tests/event_relay.py` to verify response framing and lifecycle filtering,
+and `python3 tests/credential_bridge.py` to verify credential isolation.
+Run `python3 tests/browser_configuration.py` for browser account and trust-path
+isolation, and `python3 tests/writer_handoff.py` for idle task handoff.
 
 ## Privacy
 
 Parallex has no analytics, update service, or network client. It inspects
 same-user local processes and Codex state, asks a locally started Codex
 app-server for `account/read`, and starts account-bound Desktop processes only
-when selected. Parallex validates credential file metadata but never reads,
-copies, parses, displays, logs, or transmits credential contents. Codex itself
-retains responsibility for its normal authentication and network activity.
+when selected. The runtime relay reads credentials only to authenticate the
+corresponding local backend, and the IPC bridge reads account identity claims
+for read-state matching. Credentials are never displayed or logged. Codex
+handles authentication and network requests.
 
 Read [PRIVACY.md](PRIVACY.md) for the exact fields and transient buffers the app
 accesses.

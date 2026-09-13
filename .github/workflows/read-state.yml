@@ -1,0 +1,16 @@
+name: sidebar read-state regression
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  read-state:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify sidebar synchronization and restart recovery
+        run: python3 tests/read_state_bridge.py
+      - name: Build Parallex
+        run: ./script/build_and_run.sh build

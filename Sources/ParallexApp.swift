@@ -14,6 +14,7 @@ enum ParallexApplication {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private let monitor = CodexMonitor()
+  private let readStateBridge = CodexReadStateBridge()
   private var statusItemController: StatusItemController?
 
   /// When Parallex launches, this function deliberately makes it a Dock-free menu-bar utility.
@@ -23,10 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let statusItemController = StatusItemController(monitor: monitor)
     self.statusItemController = statusItemController
     statusItemController.start()
+    readStateBridge.start()
   }
 
   /// When Parallex terminates, this function releases polling and process resources.
   func applicationWillTerminate(_ notification: Notification) {
     statusItemController?.stop()
+    readStateBridge.stop()
   }
 }

@@ -9,7 +9,7 @@ On each refresh, Parallex may access:
 
 - same-user Codex process IDs, executable paths, and profile-identifying launch
   arguments;
-- `CODEX_HOME` and `CODEX_SQLITE_HOME` from the process argument/environment
+- `CODEX_HOME`, `CODEX_SQLITE_HOME`, and `CODEX_CLI_PATH` from the process argument/environment
   buffer;
 - paths of rollout files currently open by Codex processes;
 - lifecycle markers and timestamps in those rollout files;
@@ -22,25 +22,30 @@ On each refresh, Parallex may access:
 - the modification time of file-backed `auth.json`, when present;
 - credential file metadata such as type and size before an account instance is
   opened;
-- local app-server `thread/started`, `thread/name/updated`, and
-  `thread/status/changed` notifications while profile instances are open.
+- local app-server thread notifications and protocol messages while profile
+  instances are open;
+- account identity claims and each profile’s own persisted unread-task list for
+  matching and reconciling local read-state notifications;
+- private profile credentials, solely to authenticate that profile's backend
+  through local pipes.
 
 macOS returns the complete process argument/environment buffer, and rollout
-reads occur in bounded byte buffers. Those transient buffers can contain fields
-Parallex does not use. During ordinary refreshes, the app decodes only the
-fields listed above. Legacy global-state cleanup reads filesystem metadata only
-to confirm that each obsolete item is a regular file or symbolic link. It does
-not display or log other fields. The runtime relay passes all app-server traffic
-through unchanged and copies only the three listed thread notifications to other
-local profile instances. It does not persist or transmit them over a network,
-and it discards transient buffers after use.
+reads occur in bounded byte buffers. Transient buffers can contain fields
+Parallex does not use. The monitor decodes only the fields listed above. The
+relay mediates authentication messages and passes task traffic to the bundled
+Codex backend. Task names, native read/archive metadata, and idle writer-handoff
+identifiers are shared between account windows; credentials and task execution requests are not
+broadcast. Protocol buffers are transient and are not written to logs.
 
 ## Data stored
 
 Observed accounts and sessions remain in memory. Parallex stores one boolean in
 macOS user defaults: whether email addresses should be hidden. It does not store
 account emails, thread titles, workspace names, process details, or scan
-history.
+history. The owner-only `~/.codex/parallex-read-state.json` journal stores task
+IDs, read/unread booleans, hashed profile and identity keys, and reconciliation
+snapshots. It contains no task contents or credentials and is atomically updated
+to recover missed notifications across restarts.
 
 Saved profiles are user-managed directories under `~/.codex-accounts`. When an
 account is added or its instance is first opened, Parallex may create or update:
@@ -53,13 +58,14 @@ account is added or its instance is first opened, Parallex may create or update:
   configuration flags, but no credential data.
 
 Parallex never replaces an unrecognized or divergent profile item. Declared
-shared-state paths must be absent or already link to the canonical `~/.codex`
-item. A conflict stops launch without deleting it. Parallex removes obsolete
-profile-local `.codex-global-state.json`, `.codex-global-state.json.bak`, and
-`.codex-global-state.before-parallex-sharing.json` items after validating that
-each one is a regular file or symbolic link. It never rewrites the canonical
-file; Codex Desktop reads it directly because each Electron process receives
-the shared Codex home.
+shared paths must be absent or already link to the canonical item; a conflict
+stops launch without deleting it. Desktop preferences and bootstrap configuration
+are seeded once from the shared home and then remain private. Known links to
+these private bootstrap files are replaced with copies while their shared
+targets remain intact. All inference backends use the canonical shared data home.
+Launcher preflight can restore missing browser plugin bundles from the installed
+app into the shared cache, preserving vendor files and backing up incomplete
+entries. Browser authentication reads use the selected profile's native helper.
 
 ## Network behavior
 
@@ -70,19 +76,23 @@ stdio app-server, disables plugins and apps for that probe, and sends
 selected, Parallex starts the installed Codex login process with that account's
 private home; Codex opens and owns the browser authentication flow. When the
 bulk-open action is selected, Parallex may start one installed Codex Desktop
-process per configured billing account. Codex performs its own authentication
-and network activity independently of Parallex.
+process per configured billing account. The runtime credential helper asks Codex to refresh the selected account when
+needed. Codex performs all authentication and network requests.
 
 ## Credentials
 
 Each account keeps its own regular, non-symbolic-link
-`~/.codex-accounts/<email>/home/auth.json`. Parallex validates only file metadata
-before launch. It does not read, copy, parse, display, log, or transmit the
-contents, and it never hot-swaps credentials beneath a running Codex process.
+`~/.codex-accounts/<email>/home/auth.json`. The relay validates and reads that
+file, then supplies its access token to the corresponding backend using Codex's
+external-authentication protocol over a local pipe. The backend stores this
+authentication in process memory. Login, logout, and refresh are handled through
+a separate Codex credential process using that profile's private home. The
+shared `auth.json` is not modified. Credential values never appear in generated
+shims, command arguments, application logs, or UI.
 
-The private runtime shim forces file-backed ChatGPT authentication so separate
-instances do not collapse into one shared Keychain credential. Treat every
-`auth.json` as a password and never include one in a bug report.
+The read-state bridge decodes account identity claims solely to match local IPC
+notifications. It does not forward tokens. Treat every `auth.json` as a password
+and never include one in a bug report.
 
 ## User control
 
@@ -97,4 +107,5 @@ instances do not collapse into one shared Keychain credential. Treat every
   instances remain under normal Codex control.
 - Remove Parallex from Applications and run
   `defaults delete org.curvelabs.Parallex hideEmailAddresses` to remove the app
-  and its persisted preference. Saved profiles remain until you remove them.
+  and its persisted preference. Remove `~/.codex/parallex-read-state.json` to delete
+  the notification journal. Saved profiles remain until you remove them.

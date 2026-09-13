@@ -57,6 +57,7 @@ swiftc \
   "$ROOT_DIR/Sources/ParallexApp.swift" \
   "$ROOT_DIR/Sources/CodexMonitor.swift" \
   "$ROOT_DIR/Sources/CodexProfileManager.swift" \
+  "$ROOT_DIR/Sources/CodexReadStateBridge.swift" \
   "$ROOT_DIR/Sources/CodexScanner.swift" \
   "$ROOT_DIR/Sources/ParallexIcon.swift" \
   "$ROOT_DIR/Sources/StatusItemController.swift" \
