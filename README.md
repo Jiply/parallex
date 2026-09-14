@@ -109,7 +109,9 @@ Desktop bootstrap configuration, preferences, browser state, and temporary
 plugin installation files remain private. The backend uses the canonical
 configuration. Task title updates refresh other instances' catalogs. While
 Parallex runs, its local IPC bridge shares read/unread, archive, and unarchive
-metadata between saved profiles. Unread state is reconciled after reconnects and
+metadata between saved profiles. One native notification router starts per
+account before Desktop opens and stays available across app restarts, preventing
+clients from splitting across competing sockets. Unread state is reconciled after reconnects and
 restarts using a private local journal, including reads made while Parallex is
 stopped. On first adoption, conflicting lists preserve unread notifications;
 subsequent explicit read/unread changes establish the shared state. It never
@@ -140,7 +142,10 @@ synchronization. Keep normal backups and avoid concurrent edits to one task.
 
 Run `python3 tests/read_state_bridge.py` to verify read-state synchronization
 against isolated IPC servers, including reconnects, process restarts, and missed
-read events. The sidebar CI workflow runs this test and builds the app. Run
+read events. Run `python3 tests/native_ipc_router.py` on macOS with Codex
+installed to verify native router startup, singleton ownership, routing, and
+restart takeover. The sidebar CI workflow runs the bridge test and builds the
+app. Run
 `python3 tests/profile_state.py` to verify
 profile migration and preservation of existing settings. Run
 `python3 tests/event_relay.py` to verify response framing and lifecycle filtering,

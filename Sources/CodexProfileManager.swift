@@ -55,6 +55,7 @@ private enum CodexProfileError: LocalizedError {
   case desktopAppUnavailable
   case bundledCodexUnavailable
   case bundledRelayUnavailable
+  case notificationRouterUnavailable
 
   var errorDescription: String? {
     switch self {
@@ -84,6 +85,8 @@ private enum CodexProfileError: LocalizedError {
       return "The installed Codex Desktop app does not include its Codex runtime."
     case .bundledRelayUnavailable:
       return "Parallex does not include its Codex event relay. Rebuild Parallex and try again."
+    case .notificationRouterUnavailable:
+      return "Parallex could not establish Codex's notification router. Rebuild Parallex for the installed Codex version and try again."
     }
   }
 }
@@ -332,6 +335,7 @@ final class CodexProfileManager {
     installation: CodexDesktopInstallation
   ) throws {
     try prepareInstance(profile, codexExecutableURL: installation.codexExecutableURL)
+    try ensureNotificationRouter(for: profile, installation: installation, waitForOwnership: true)
     let cliWrapperURL = profile.rootURL.appendingPathComponent(".parallex-codex")
 
     var environment = ProcessInfo.processInfo.environment
@@ -359,6 +363,66 @@ final class CodexProfileManager {
     if let launchError {
       throw launchError
     }
+  }
+
+  /// When Parallex starts, persistent native routers keep account sockets available across app restarts.
+  func startNotificationRouters() {
+    guard let installation = desktopInstallation() else { return }
+    let profiles = profiles() + [CodexProfile(email: "", rootURL: sharedHomeURL,
+      homeURL: sharedHomeURL, desktopDataURL: sharedHomeURL)]
+    for profile in profiles where profile.hasCredentials {
+      do {
+        try ensureNotificationRouter(for: profile, installation: installation, waitForOwnership: false)
+      } catch {
+        NSLog("Parallex could not start a native notification router")
+      }
+    }
+  }
+
+  /// When Desktop opens, one native router must be listening before its clients initialize concurrently.
+  private func ensureNotificationRouter(for profile: CodexProfile,
+    installation: CodexDesktopInstallation, waitForOwnership: Bool) throws {
+    guard let script = Bundle.main.url(forResource: "CodexIPCRouter", withExtension: "cjs") else {
+      throw CodexProfileError.notificationRouterUnavailable
+    }
+    let resources = installation.bundleURL.appendingPathComponent("Contents/Resources")
+    let node = resources.appendingPathComponent("cua_node/bin/node")
+    let archive = resources.appendingPathComponent("app.asar")
+    guard fileManager.isExecutableFile(atPath: node.path), fileManager.fileExists(atPath: archive.path)
+    else { throw CodexProfileError.notificationRouterUnavailable }
+    let ipc = profile.homeURL.appendingPathComponent("ipc")
+    try createPrivateDirectory(at: ipc)
+    let statusURL = ipc.appendingPathComponent("parallex-router.json")
+    func status() -> [String: Any]? {
+      guard let data = try? Data(contentsOf: statusURL), data.count <= 4096,
+        let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let pid = value["pid"] as? Int32, kill(pid, 0) == 0,
+        let arguments = processArguments(for: pid),
+        arguments.split(separator: 0).contains(Data(script.path.utf8)),
+        arguments.split(separator: 0).contains(Data(profile.homeURL.path.utf8))
+      else { return nil }
+      return value
+    }
+    if status() == nil {
+      let process = Process()
+      process.executableURL = node
+      process.arguments = [script.path, archive.path, profile.homeURL.path]
+      var environment = ProcessInfo.processInfo.environment
+      environment["CODEX_HOME"] = profile.homeURL.path
+      process.environment = environment
+      process.standardInput = FileHandle.nullDevice
+      process.standardOutput = FileHandle.nullDevice
+      process.standardError = FileHandle.nullDevice
+      try process.run()
+    }
+    guard waitForOwnership else { return }
+    let deadline = Date().addingTimeInterval(10)
+    while Date() < deadline {
+      if let state = status(), state["ready"] as? Bool == true,
+        state["ownsRouter"] as? Bool == true { return }
+      Thread.sleep(forTimeInterval: 0.1)
+    }
+    throw CodexProfileError.notificationRouterUnavailable
   }
 
   /// When a Desktop needs to launch, this function validates credentials and the installed runtime first.

@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let statusItemController = StatusItemController(monitor: monitor)
     self.statusItemController = statusItemController
     statusItemController.start()
+    DispatchQueue.global(qos: .utility).async {
+      CodexProfileManager().startNotificationRouters()
+    }
     readStateBridge.start()
   }
 

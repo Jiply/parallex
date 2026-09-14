@@ -45,7 +45,9 @@ account emails, thread titles, workspace names, process details, or scan
 history. The owner-only `~/.codex/parallex-read-state.json` journal stores task
 IDs, read/unread booleans, hashed profile and identity keys, and reconciliation
 snapshots. It contains no task contents or credentials and is atomically updated
-to recover missed notifications across restarts.
+to recover missed notifications across restarts. Each account’s `ipc` directory
+also holds an owner-only kernel lock file and a readiness record containing the
+router’s process ID.
 
 Saved profiles are user-managed directories under `~/.codex-accounts`. When an
 account is added or its instance is first opened, Parallex may create or update:
@@ -69,7 +71,12 @@ entries. Browser authentication reads use the selected profile's native helper.
 
 ## Network behavior
 
-Parallex contains no analytics, telemetry, update checker, or network client.
+Parallex contains no analytics, telemetry, or update checker. A small persistent
+process per account loads the installed Codex app’s unmodified IPC implementation
+in memory using its bundled Node runtime. It establishes one Unix-domain socket
+router before Desktop launches and routes native messages only within that
+account. It does not read credentials or send data to external services. These
+routers remain available when Parallex or Desktop quits.
 For account information it starts the installed Codex executable as a local
 stdio app-server, disables plugins and apps for that probe, and sends
 `account/read` with token refresh disabled. When **Add billing account…** is

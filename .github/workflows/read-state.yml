@@ -12,5 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify sidebar synchronization and restart recovery
         run: python3 tests/read_state_bridge.py
+      - name: Verify native router when Codex is installed
+        run: python3 tests/native_ipc_router.py
       - name: Build Parallex
         run: ./script/build_and_run.sh build
