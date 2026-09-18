@@ -77,9 +77,9 @@ enum ParallexIcon {
     let horizontalOffsetRatio: CGFloat = 0.24
     let verticalOffsetRatio: CGFloat = 0.20
     let rotationDegrees: CGFloat = -16
-    let rotationRadians = abs(rotationDegrees) * .pi / 180
+    let rotationRadians: CGFloat = abs(rotationDegrees) * .pi / 180
     let drawingBounds = bounds.insetBy(dx: strokeWidth / 2, dy: strokeWidth / 2)
-    let hexagonHeightRatio = sqrt(3) / 2
+    let hexagonHeightRatio: CGFloat = sqrt(3) / 2
     let stackedHeightRatio = hexagonHeightRatio + verticalOffsetRatio
     let rotatedWidthRatio = (1 + horizontalOffsetRatio) * cos(rotationRadians)
       + stackedHeightRatio * sin(rotationRadians)
@@ -89,7 +89,7 @@ enum ParallexIcon {
       drawingBounds.width / rotatedWidthRatio,
       drawingBounds.height / rotatedHeightRatio
     )
-    let hexagonHeight = hexagonWidth * sqrt(3) / 2
+    let hexagonHeight = hexagonWidth * hexagonHeightRatio
     let horizontalOffset = hexagonWidth * horizontalOffsetRatio
     let verticalOffset = hexagonWidth * verticalOffsetRatio
     let rearRect = NSRect(
