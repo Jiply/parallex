@@ -105,8 +105,8 @@ storage paths introduced by Codex updates. The Desktop process uses a private
 home for its IPC channel: native cross-window execution forwarding would
 otherwise bill the task owner's account instead of the sending window's account.
 
-Desktop bootstrap configuration, preferences, browser state, and temporary
-plugin installation files remain private. The backend uses the canonical
+Desktop bootstrap configuration, preferences, transcription history, browser
+state, and temporary plugin installation files remain private. The backend uses the canonical
 configuration. Task title updates refresh other instances' catalogs. While
 Parallex runs, its local IPC bridge shares read/unread, archive, and unarchive
 metadata between saved profiles. One native notification router starts per

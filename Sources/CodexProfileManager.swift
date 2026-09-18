@@ -116,12 +116,13 @@ final class CodexProfileManager {
     "state",
     "themes",
     "tmp",
-    "transcription-history.jsonl",
     "vendor_imports",
     "visualizations",
     "worktrees",
   ]
-  private let privateStateNames = [".tmp", "config.toml", ".codex-global-state.json"]
+  private let privateStateNames = [
+    ".tmp", "config.toml", ".codex-global-state.json", "transcription-history.jsonl",
+  ]
 
   init(
     fileManager: FileManager = .default,

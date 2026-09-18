@@ -28,9 +28,10 @@ Use this layout for every lowercase email address:
 ```
 
 Each account home must keep `auth.json`, `installation_id`, `cache`,
-`models_cache.json`, logs, IPC, `.tmp`, `config.toml`, and
-`.codex-global-state.json` private. Create a physical `.tmp` directory. Seed
-missing configuration and Desktop preferences with copies from `~/.codex`;
+`models_cache.json`, logs, IPC, `.tmp`, `config.toml`,
+`.codex-global-state.json`, and `transcription-history.jsonl` private. Create a
+physical `.tmp` directory. Seed missing configuration, Desktop preferences,
+and transcription history with copies from `~/.codex`;
 replace the shared `.tmp` prefix in copied configuration with the profile's
 private `.tmp` path. Preserve existing private settings. When migrating known
 links to these shared items, remove only the verified links, never their targets.
@@ -58,7 +59,6 @@ skills
 state
 themes
 tmp
-transcription-history.jsonl
 vendor_imports
 visualizations
 worktrees

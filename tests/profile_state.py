@@ -45,14 +45,26 @@ let config = "[marketplaces.openai-bundled]\\nsource = \\\"\\(shared.path)/.tmp/
 try Data(config.utf8).write(to: shared.appendingPathComponent("config.toml"))
 try Data("{\\\"selected-project\\\":\\\"existing\\\"}".utf8).write(to: shared.appendingPathComponent(".codex-global-state.json"))
 try Data("keep".utf8).write(to: shared.appendingPathComponent(".tmp/sentinel"))
+try Data("shared-transcription".utf8).write(to: shared.appendingPathComponent("transcription-history.jsonl"))
 try Data("{}".utf8).write(to: home.appendingPathComponent("auth.json"))
 try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: home.appendingPathComponent("auth.json").path)
-for name in [".tmp", "config.toml"] {
+for name in [".tmp", "config.toml", "transcription-history.jsonl"] {
   try fm.createSymbolicLink(at: home.appendingPathComponent(name), withDestinationURL: shared.appendingPathComponent(name))
 }
 let profile = CodexProfile(email: "test@example.test", rootURL: account, homeURL: home, desktopDataURL: account.appendingPathComponent("desktop"))
 let manager = CodexProfileManager(sharedHomeURL: shared, accountsHomeURL: accounts)
 try manager.prepareInstance(profile, codexExecutableURL: runtime)
+let transcription = home.appendingPathComponent("transcription-history.jsonl")
+check(try transcription.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false)
+check(try String(contentsOf: transcription, encoding: .utf8) == "shared-transcription")
+// Desktop rewrites this file atomically during startup, even with no history.
+try Data().write(to: transcription, options: .atomic)
+try manager.prepareInstance(profile, codexExecutableURL: runtime)
+check(try Data(contentsOf: transcription).isEmpty)
+try Data("private-transcription".utf8).write(to: transcription, options: .atomic)
+try manager.prepareInstance(profile, codexExecutableURL: runtime)
+check(try String(contentsOf: transcription, encoding: .utf8) == "private-transcription")
+check(try String(contentsOf: shared.appendingPathComponent("transcription-history.jsonl"), encoding: .utf8) == "shared-transcription")
 let browserCache = shared.appendingPathComponent("plugins/cache/openai-bundled/browser")
 let cached = browserCache.appendingPathComponent("test-version")
 check(try String(contentsOf: cached.appendingPathComponent("NOTICE"), encoding: .utf8) == "vendor-sentinel")
@@ -84,7 +96,7 @@ do {
   try manager.prepareInstance(profile, codexExecutableURL: runtime)
   fatalError("accepted divergent symlink")
 } catch {}
-print("PASS: private temp/config/state, shared data preserved, repeated preparation preserves settings, divergent links rejected")
+print("PASS: private temp/config/state/transcription, atomic transcription rewrites survive preparation, shared data preserved, divergent links rejected")
 ''')
         sources = ["CodexProfileManager", "CodexScanner", "CodexMonitor"]
         subprocess.run(["swiftc", "-swift-version", "5", "-module-cache-path", str(root / "module-cache"), str(harness),
