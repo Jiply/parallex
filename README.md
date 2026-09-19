@@ -47,7 +47,8 @@ Clone or download the repository, then run from its root:
 ```
 
 Parallex builds to `dist/Parallex.app` and opens as a Dock-free menu-bar app.
-Hover over its icon to reveal the menu. To keep the locally built app, drag
+Open Parallex from Spotlight or Finder to reveal its menu, or hover over its
+menu-bar icon. To keep the locally built app, drag
 `dist/Parallex.app` into `/Applications`.
 
 Choose **Add billing account…**, enter its email address, and complete the
@@ -145,7 +146,8 @@ against isolated IPC servers, including reconnects, process restarts, and missed
 read events. Run `python3 tests/native_ipc_router.py` on macOS with Codex
 installed to verify native router startup, singleton ownership, routing, and
 restart takeover. The sidebar CI workflow runs the bridge test and builds the
-app. Run
+app. Run `python3 tests/app_lifecycle.py` in a logged-in macOS session to verify
+cold launch and repeated reopen requests. Run
 `python3 tests/profile_state.py` to verify
 profile migration and preservation of existing settings. Run
 `python3 tests/event_relay.py` to verify response framing and lifecycle filtering,

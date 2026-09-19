@@ -28,6 +28,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       CodexProfileManager().startNotificationRouters()
     }
     readStateBridge.start()
+
+    let launchEvent = NSAppleEventManager.shared().currentAppleEvent
+    let backgroundLaunch =
+      launchEvent?.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
+      || launchEvent?.paramDescriptor(forKeyword: keyAELaunchedAsServiceItem) != nil
+    if notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool == true,
+      !backgroundLaunch, !NSApplication.shared.isHidden
+    {
+      statusItemController.showMenu()
+    }
+  }
+
+  /// When Spotlight or Finder reopens this windowless app, this function reveals its menu.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool
+  {
+    statusItemController?.showMenu()
+    return false
   }
 
   /// When Parallex terminates, this function releases polling and process resources.

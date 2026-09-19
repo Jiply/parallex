@@ -156,8 +156,8 @@ function start() {
   const lockDescriptor = fs.openSync(lockPath, fs.constants.O_RDWR | fs.constants.O_CREAT | fs.constants.O_NOFOLLOW, 0o600);
   fs.fchmodSync(lockDescriptor, 0o600);
   const lock = spawnSync('/usr/bin/lockf', ['-s', '-t', '0', '3'], {
-    stdio: ['ignore', 'ignore', 'ignore', lockDescriptor],
     timeout: 5000,
+    stdio: ['ignore', 'ignore', 'ignore', lockDescriptor],
   });
   if (lock.status !== 0) {
     fs.closeSync(lockDescriptor);
@@ -182,8 +182,8 @@ function start() {
   function publish() {
     const status = JSON.stringify({
       pid: process.pid,
-      ready: Boolean(client?.socket?.writable && client.getClientId() !== 'initializing-client'),
       ownsRouter: client?.routerManager?.routerStarted === true,
+      ready: Boolean(client?.socket?.writable && client.getClientId() !== 'initializing-client'),
     });
     if (status === lastStatus) return;
     fs.writeFileSync(temporary, status, { mode: 0o600, flag: 'wx' });

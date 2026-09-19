@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 
 private enum NativeMenuStyle {
   static let rowWidth: CGFloat = 420
@@ -156,6 +157,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   private let profileManager = CodexProfileManager()
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
   private let menu = NSMenu()
+  private let logger = Logger(subsystem: "org.curvelabs.Parallex", category: "Menu")
   private let profileActionQueue = DispatchQueue(
     label: "org.curvelabs.Parallex.profile-actions",
     qos: .userInitiated
@@ -178,6 +180,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
   /// When the status item is deallocated, this function removes its menu-bar slot.
   deinit {
     NSStatusBar.system.removeStatusItem(statusItem)
+  }
+
+  /// When explicitly opened, this function presents the menu even if its status item is offscreen.
+  func showMenu() {
+    logger.info("Menu presentation requested")
+    DispatchQueue.main.async { [weak self] in
+      guard let self, !self.menuOpen else { return }
+      self.menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
   }
 
   /// When the pointer enters the status item, this function opens the native menu.
@@ -211,12 +222,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
   /// When native menu tracking begins, this function prevents duplicate hover opens.
   func menuWillOpen(_ menu: NSMenu) {
+    logger.info("Menu opened; application active: \(NSApplication.shared.isActive)")
     hoverOpenPending = false
     menuOpen = true
   }
 
   /// When native menu tracking ends, this function prepares the latest content for the next reveal.
   func menuDidClose(_ menu: NSMenu) {
+    logger.info("Menu closed; application active: \(NSApplication.shared.isActive)")
     menuOpen = false
     suppressHoverOpenUntilExit = pointerIsInsideStatusItem()
     rebuildMenu(with: monitor.snapshot)
